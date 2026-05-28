@@ -33,7 +33,9 @@
 
         let lastWaveTime = 0;
         const waveHistory = [];
-        const MAX_HISTORY = 10;
+        const MAX_HISTORY = 15;
+        let directionChanges = 0;
+        let lastDirection = 0; // 1 = right, -1 = left
 
         function onResults(results) {
             canvasCtx.save();
@@ -86,23 +88,31 @@
             
             // Hand über Kopf
             if (wrist.y < nose.y) {
+                if (waveHistory.length > 0) {
+                    const diff = wrist.x - waveHistory[waveHistory.length - 1];
+                    const currentDirection = diff > 0.005 ? 1 : (diff < -0.005 ? -1 : 0);
+                    
+                    if (currentDirection !== 0 && currentDirection !== lastDirection) {
+                        if (lastDirection !== 0) directionChanges++;
+                        lastDirection = currentDirection;
+                    }
+                }
+
                 waveHistory.push(wrist.x);
                 if (waveHistory.length > MAX_HISTORY) waveHistory.shift();
                 
-                if (waveHistory.length === MAX_HISTORY) {
-                    let movement = 0;
-                    for(let i=1; i<waveHistory.length; i++) {
-                        movement += Math.abs(waveHistory[i] - waveHistory[i-1]);
-                    }
-                    
+                if (directionChanges >= 4) { // 4 Richtungswechsel = 2 volle Hin-und-Her Bewegungen
                     const now = Date.now();
-                    if (movement > 0.1 && now - lastWaveTime > 10000) {
+                    if (now - lastWaveTime > 10000) {
                         lastWaveTime = now;
+                        directionChanges = 0;
                         triggerLog();
                     }
                 }
             } else {
                 waveHistory.length = 0;
+                directionChanges = 0;
+                lastDirection = 0;
             }
         }
 
