@@ -32,10 +32,10 @@
         const alertElement = document.getElementById('wave-alert');
 
         let lastWaveTime = 0;
-        const waveHistory = [];
+        const angleHistory = [];
         const MAX_HISTORY = 15;
         let directionChanges = 0;
-        let lastDirection = 0; // 1 = right, -1 = left
+        let lastDirection = 0; // 1 = increasing, -1 = decreasing
 
         function onResults(results) {
             canvasCtx.save();
@@ -77,6 +77,13 @@
             statusElement.innerText = "Aktiv: Wink zum Loggen";
         });
 
+        function calculateAngle(p1, p2, p3) {
+            const radians = Math.atan2(p3.y - p2.y, p3.x - p2.x) - Math.atan2(p1.y - p2.y, p1.x - p2.x);
+            let angle = Math.abs(radians * 180.0 / Math.PI);
+            if (angle > 180.0) angle = 360 - angle;
+            return angle;
+        }
+
         function detectWave(landmarks) {
             const nose = landmarks[0];
             const leftShoulder = landmarks[11];
@@ -85,21 +92,24 @@
             const rightElbow = landmarks[14];
             const leftWrist = landmarks[15];
             const rightWrist = landmarks[16];
+            const leftHip = landmarks[23];
+            const rightHip = landmarks[24];
             
             if (!nose || (!leftWrist && !rightWrist)) return;
 
-            // Bestimme, welcher Arm aktiver ist (höherer Punkt)
+            // Welcher Arm ist über dem Kopf?
             let isLeft = (leftWrist && (!rightWrist || leftWrist.y < rightWrist.y));
             let wrist = isLeft ? leftWrist : rightWrist;
             let elbow = isLeft ? leftElbow : rightElbow;
             let shoulder = isLeft ? leftShoulder : rightShoulder;
+            let hip = isLeft ? leftHip : rightHip;
 
-            // Der gesamte Arm (Schulter, Ellbogen, Handgelenk) muss sichtbar sein (> 0.5 visibility)
-            if (!shoulder || !elbow || !wrist || 
+            // Sichtbarkeit prüfen
+            if (!shoulder || !elbow || !wrist || !hip ||
                 shoulder.visibility < 0.5 || 
                 elbow.visibility < 0.5 || 
                 wrist.visibility < 0.5) {
-                waveHistory.length = 0;
+                angleHistory.length = 0;
                 directionChanges = 0;
                 lastDirection = 0;
                 return;
@@ -107,9 +117,15 @@
             
             // Hand über Kopf
             if (wrist.y < nose.y) {
-                if (waveHistory.length > 0) {
-                    const diff = wrist.x - waveHistory[waveHistory.length - 1];
-                    const currentDirection = diff > 0.005 ? 1 : (diff < -0.005 ? -1 : 0);
+                // Berechne Winkel am Oberkörper (Hüfte-Schulter-Ellbogen) 
+                // oder Arm (Schulter-Ellbogen-Handgelenk)?
+                // Für Winken ist der Achselwinkel (Hüfte-Schulter-Ellbogen) am stabilsten gegen Kameraschütteln
+                const angle = calculateAngle(hip, shoulder, elbow);
+
+                if (angleHistory.length > 0) {
+                    const diff = angle - angleHistory[angleHistory.length - 1];
+                    // Richtungswechsel basierend auf Winkeländerung (> 2 Grad Schwelle)
+                    const currentDirection = diff > 2.0 ? 1 : (diff < -2.0 ? -1 : 0);
                     
                     if (currentDirection !== 0 && currentDirection !== lastDirection) {
                         if (lastDirection !== 0) directionChanges++;
@@ -117,10 +133,10 @@
                     }
                 }
 
-                waveHistory.push(wrist.x);
-                if (waveHistory.length > MAX_HISTORY) waveHistory.shift();
+                angleHistory.push(angle);
+                if (angleHistory.length > MAX_HISTORY) angleHistory.shift();
                 
-                if (directionChanges >= 4) { // 4 Richtungswechsel = 2 volle Hin-und-Her Bewegungen
+                if (directionChanges >= 4) { // 2x hin und her
                     const now = Date.now();
                     if (now - lastWaveTime > 10000) {
                         lastWaveTime = now;
@@ -129,7 +145,7 @@
                     }
                 }
             } else {
-                waveHistory.length = 0;
+                angleHistory.length = 0;
                 directionChanges = 0;
                 lastDirection = 0;
             }
