@@ -33,9 +33,10 @@
 
         let lastWaveTime = 0;
         const angleHistory = [];
-        const MAX_HISTORY = 15;
+        const MAX_HISTORY = 30; // Größeres Fenster für langsamere Bewegungen
         let directionChanges = 0;
-        let lastDirection = 0; // 1 = increasing, -1 = decreasing
+        let lastDirection = 0; 
+        let lastDirectionTime = 0;
 
         function onResults(results) {
             canvasCtx.save();
@@ -97,14 +98,12 @@
             
             if (!nose || (!leftWrist && !rightWrist)) return;
 
-            // Welcher Arm ist über dem Kopf?
             let isLeft = (leftWrist && (!rightWrist || leftWrist.y < rightWrist.y));
             let wrist = isLeft ? leftWrist : rightWrist;
             let elbow = isLeft ? leftElbow : rightElbow;
             let shoulder = isLeft ? leftShoulder : rightShoulder;
             let hip = isLeft ? leftHip : rightHip;
 
-            // Sichtbarkeit prüfen
             if (!shoulder || !elbow || !wrist || !hip ||
                 shoulder.visibility < 0.5 || 
                 elbow.visibility < 0.5 || 
@@ -115,20 +114,26 @@
                 return;
             }
             
-            // Hand über Kopf
             if (wrist.y < nose.y) {
-                // Berechne Winkel am Oberkörper (Hüfte-Schulter-Ellbogen) 
-                // oder Arm (Schulter-Ellbogen-Handgelenk)?
-                // Für Winken ist der Achselwinkel (Hüfte-Schulter-Ellbogen) am stabilsten gegen Kameraschütteln
                 const angle = calculateAngle(hip, shoulder, elbow);
+                const now = Date.now();
 
                 if (angleHistory.length > 0) {
-                    const diff = angle - angleHistory[angleHistory.length - 1];
-                    // Richtungswechsel basierend auf Winkeländerung (> 2 Grad Schwelle)
-                    const currentDirection = diff > 2.0 ? 1 : (diff < -2.0 ? -1 : 0);
+                    // Nutze einen gleitenden Durchschnitt oder vergleiche mit einem Punkt weiter zurück
+                    // um nervöses Zittern (schnelle kleine Änderungen) zu ignorieren.
+                    const lookbackIndex = Math.max(0, angleHistory.length - 5);
+                    const diff = angle - angleHistory[lookbackIndex];
+                    
+                    // Schwelle erhöht auf 10 Grad (größere Bewegung erforderlich)
+                    const currentDirection = diff > 10.0 ? 1 : (diff < -10.0 ? -1 : 0);
                     
                     if (currentDirection !== 0 && currentDirection !== lastDirection) {
-                        if (lastDirection !== 0) directionChanges++;
+                        // Zeitlicher Filter: Richtungswechsel darf nicht zu schnell erfolgen (> 300ms)
+                        // Verhindert Erkennung von schnellem Zittern/Schütteln
+                        if (lastDirection !== 0 && (now - lastDirectionTime > 300)) {
+                            directionChanges++;
+                            lastDirectionTime = now;
+                        }
                         lastDirection = currentDirection;
                     }
                 }
@@ -136,8 +141,7 @@
                 angleHistory.push(angle);
                 if (angleHistory.length > MAX_HISTORY) angleHistory.shift();
                 
-                if (directionChanges >= 4) { // 2x hin und her
-                    const now = Date.now();
+                if (directionChanges >= 4) { 
                     if (now - lastWaveTime > 10000) {
                         lastWaveTime = now;
                         directionChanges = 0;
@@ -157,7 +161,6 @@
             
             statusElement.innerText = "Logge...";
             
-            // Capture image
             const captureCanvas = document.createElement('canvas');
             captureCanvas.width = videoElement.videoWidth;
             captureCanvas.height = videoElement.videoHeight;
