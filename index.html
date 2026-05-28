@@ -88,7 +88,7 @@
 
         function isInFrame(lm) {
             // MediaPipe Koordinaten sind auf [0, 1] normalisiert
-            return lm && lm.x >= 0 && lm.x <= 1 && lm.y >= 0 && lm.y <= 1;
+            return lm && lm.x >= 0.0 && lm.x <= 1.0 && lm.y >= 0.0 && lm.y <= 1.0;
         }
 
         function detectWave(landmarks) {
@@ -116,12 +116,13 @@
             // STRENGE PRÜFUNG: 
             // 1. Alle benötigten Punkte müssen vorhanden sein
             // 2. Sichtbarkeit muss hoch sein (> 0.75)
-            // 3. Schultern und Ellbogen MÜSSEN im Bildbereich (0.0 bis 1.0) liegen
+            // 3. Beide Schultern und der aktive Ellbogen MÜSSEN im Bildbereich liegen
             const pointsValid = 
-                shoulder && elbow && wrist && hip &&
-                shoulder.visibility > 0.75 && isInFrame(shoulder) &&
+                leftShoulder && rightShoulder && elbow && wrist && hip &&
+                leftShoulder.visibility > 0.75 && isInFrame(leftShoulder) &&
+                rightShoulder.visibility > 0.75 && isInFrame(rightShoulder) &&
                 elbow.visibility > 0.75 && isInFrame(elbow) &&
-                wrist.visibility > 0.75 && // Wrist darf kurzzeitig den Rand verlassen, solange die Winkel logisch bleiben?
+                wrist.visibility > 0.75 && 
                 hip.visibility > 0.75 && isInFrame(hip);
 
             if (!pointsValid) {
