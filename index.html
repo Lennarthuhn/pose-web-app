@@ -79,21 +79,26 @@
 
         function detectWave(landmarks) {
             const nose = landmarks[0];
+            const leftShoulder = landmarks[11];
+            const rightShoulder = landmarks[12];
+            const leftElbow = landmarks[13];
+            const rightElbow = landmarks[14];
             const leftWrist = landmarks[15];
             const rightWrist = landmarks[16];
             
             if (!nose || (!leftWrist && !rightWrist)) return;
 
-            // Wähle das Handgelenk mit der höheren Sichtbarkeit (visibility) aus, sofern diese über 0.5 liegt
-            let wrist = null;
-            if (leftWrist && rightWrist) {
-                wrist = (leftWrist.visibility > rightWrist.visibility) ? leftWrist : rightWrist;
-            } else {
-                wrist = leftWrist || rightWrist;
-            }
+            // Bestimme, welcher Arm aktiver ist (höherer Punkt)
+            let isLeft = (leftWrist && (!rightWrist || leftWrist.y < rightWrist.y));
+            let wrist = isLeft ? leftWrist : rightWrist;
+            let elbow = isLeft ? leftElbow : rightElbow;
+            let shoulder = isLeft ? leftShoulder : rightShoulder;
 
-            // Nur verarbeiten, wenn das Handgelenk tatsächlich sichtbar genug ist (Vermeidung von Ghosting)
-            if (wrist.visibility < 0.5) {
+            // Der gesamte Arm (Schulter, Ellbogen, Handgelenk) muss sichtbar sein (> 0.5 visibility)
+            if (!shoulder || !elbow || !wrist || 
+                shoulder.visibility < 0.5 || 
+                elbow.visibility < 0.5 || 
+                wrist.visibility < 0.5) {
                 waveHistory.length = 0;
                 directionChanges = 0;
                 lastDirection = 0;
