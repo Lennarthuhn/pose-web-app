@@ -55,9 +55,10 @@
             locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
         });
 
-        // OPTIMIERUNG: modelComplexity auf 0 (Lite) für bessere Performance auf Edge-Geräten
+        // OPTIMIERUNG: modelComplexity auf 1 (Full) für höhere Genauigkeit, 
+        // da die Zonen-Logik auch bei niedrigeren FPS stabil bleibt.
         pose.setOptions({
-            modelComplexity: 0, 
+            modelComplexity: 1, 
             smoothLandmarks: true,
             minDetectionConfidence: 0.5,
             minTrackingConfidence: 0.5
