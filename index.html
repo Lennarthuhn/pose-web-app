@@ -150,7 +150,7 @@
                 }
 
                 if (zoneSwitches >= 4) { 
-                    if (now - lastWaveTime > 10000) {
+                    if (now - lastWaveTime > 60000) {
                         lastWaveTime = now;
                         triggerLog();
                     }
