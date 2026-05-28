@@ -108,11 +108,12 @@
 
             const now = Date.now();
 
-            // Sichtbarkeit & Timeout Reset
+            // Sichtbarkeit & Timeout Reset (Strenge Prüfung für Heavy Modell)
             if (!shoulder || !elbow || !wrist || !hip ||
-                shoulder.visibility < 0.5 || 
-                elbow.visibility < 0.5 || 
-                wrist.visibility < 0.5) {
+                shoulder.visibility < 0.75 || 
+                elbow.visibility < 0.75 || 
+                wrist.visibility < 0.75 ||
+                hip.visibility < 0.75) {
                 if (now - lastSwitchTime > RESET_TIMEOUT_MS) resetWave();
                 return;
             }
