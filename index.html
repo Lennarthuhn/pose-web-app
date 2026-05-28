@@ -84,7 +84,21 @@
             
             if (!nose || (!leftWrist && !rightWrist)) return;
 
-            const wrist = (leftWrist && (!rightWrist || leftWrist.y < rightWrist.y)) ? leftWrist : rightWrist;
+            // Wähle das Handgelenk mit der höheren Sichtbarkeit (visibility) aus, sofern diese über 0.5 liegt
+            let wrist = null;
+            if (leftWrist && rightWrist) {
+                wrist = (leftWrist.visibility > rightWrist.visibility) ? leftWrist : rightWrist;
+            } else {
+                wrist = leftWrist || rightWrist;
+            }
+
+            // Nur verarbeiten, wenn das Handgelenk tatsächlich sichtbar genug ist (Vermeidung von Ghosting)
+            if (wrist.visibility < 0.5) {
+                waveHistory.length = 0;
+                directionChanges = 0;
+                lastDirection = 0;
+                return;
+            }
             
             // Hand über Kopf
             if (wrist.y < nose.y) {
