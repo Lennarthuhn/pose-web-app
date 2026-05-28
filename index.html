@@ -31,12 +31,12 @@
         const statusElement = document.getElementById('status');
         const alertElement = document.getElementById('wave-alert');
 
+        // State Machine für langsame Frameraten
         let lastWaveTime = 0;
-        const angleHistory = [];
-        const MAX_HISTORY = 30; // Größeres Fenster für langsamere Bewegungen
-        let directionChanges = 0;
-        let lastDirection = 0; 
-        let lastDirectionTime = 0;
+        let currentState = "CENTER"; // "LEFT", "RIGHT", "CENTER"
+        let zoneSwitches = 0;
+        let lastSwitchTime = 0;
+        const RESET_TIMEOUT_MS = 3000; // Reset nach 3s Inaktivität
 
         function onResults(results) {
             canvasCtx.save();
@@ -55,8 +55,9 @@
             locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
         });
 
+        // OPTIMIERUNG: modelComplexity auf 0 (Lite) für bessere Performance auf Edge-Geräten
         pose.setOptions({
-            modelComplexity: 1,
+            modelComplexity: 0, 
             smoothLandmarks: true,
             minDetectionConfidence: 0.5,
             minTrackingConfidence: 0.5
@@ -104,55 +105,55 @@
             let shoulder = isLeft ? leftShoulder : rightShoulder;
             let hip = isLeft ? leftHip : rightHip;
 
+            const now = Date.now();
+
+            // Sichtbarkeit & Timeout Reset
             if (!shoulder || !elbow || !wrist || !hip ||
                 shoulder.visibility < 0.5 || 
                 elbow.visibility < 0.5 || 
                 wrist.visibility < 0.5) {
-                angleHistory.length = 0;
-                directionChanges = 0;
-                lastDirection = 0;
+                if (now - lastSwitchTime > RESET_TIMEOUT_MS) resetWave();
                 return;
             }
             
+            // Hand über Kopf?
             if (wrist.y < nose.y) {
                 const angle = calculateAngle(hip, shoulder, elbow);
-                const now = Date.now();
 
-                if (angleHistory.length > 0) {
-                    // Nutze einen gleitenden Durchschnitt oder vergleiche mit einem Punkt weiter zurück
-                    // um nervöses Zittern (schnelle kleine Änderungen) zu ignorieren.
-                    const lookbackIndex = Math.max(0, angleHistory.length - 5);
-                    const diff = angle - angleHistory[lookbackIndex];
-                    
-                    // Schwelle erhöht auf 10 Grad (größere Bewegung erforderlich)
-                    const currentDirection = diff > 10.0 ? 1 : (diff < -10.0 ? -1 : 0);
-                    
-                    if (currentDirection !== 0 && currentDirection !== lastDirection) {
-                        // Zeitlicher Filter: Richtungswechsel darf nicht zu schnell erfolgen (> 300ms)
-                        // Verhindert Erkennung von schnellem Zittern/Schütteln
-                        if (lastDirection !== 0 && (now - lastDirectionTime > 300)) {
-                            directionChanges++;
-                            lastDirectionTime = now;
-                        }
-                        lastDirection = currentDirection;
-                    }
+                // ZONE LOGIC (Hysterese zur Vermeidung von Flattern an den Grenzen)
+                // Zone Links (Eng): < 105 Grad
+                // Zone Rechts (Weit): > 135 Grad
+                if (angle < 105 && currentState !== "LEFT") {
+                    currentState = "LEFT";
+                    zoneSwitches++;
+                    lastSwitchTime = now;
+                } else if (angle > 135 && currentState !== "RIGHT") {
+                    currentState = "RIGHT";
+                    zoneSwitches++;
+                    lastSwitchTime = now;
                 }
 
-                angleHistory.push(angle);
-                if (angleHistory.length > MAX_HISTORY) angleHistory.shift();
-                
-                if (directionChanges >= 4) { 
+                // Timeout Check: Wenn zu lange nichts passiert, Zähler zurücksetzen
+                if (now - lastSwitchTime > RESET_TIMEOUT_MS) {
+                    resetWave();
+                }
+
+                // Auslösen bei 4 Zonenwechseln (entspricht 2x hin und her)
+                if (zoneSwitches >= 4) { 
                     if (now - lastWaveTime > 10000) {
                         lastWaveTime = now;
-                        directionChanges = 0;
                         triggerLog();
                     }
+                    resetWave();
                 }
             } else {
-                angleHistory.length = 0;
-                directionChanges = 0;
-                lastDirection = 0;
+                if (now - lastSwitchTime > RESET_TIMEOUT_MS) resetWave();
             }
+        }
+
+        function resetWave() {
+            currentState = "CENTER";
+            zoneSwitches = 0;
         }
 
         async function triggerLog() {
