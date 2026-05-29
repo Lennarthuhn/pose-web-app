@@ -31,12 +31,15 @@
         const statusElement = document.getElementById('status');
         const alertElement = document.getElementById('wave-alert');
 
-        // State Machine für langsame Frameraten
+        // State Machine für extrem robustes Winken
         let lastWaveTime = 0;
-        let currentState = "CENTER"; // "LEFT", "RIGHT", "CENTER"
+        let currentState = "CENTER"; 
         let zoneSwitches = 0;
         let lastSwitchTime = 0;
-        const RESET_TIMEOUT_MS = 3000; // Reset nach 3s Inaktivität
+        let switchHistory = []; // Speichert Zeitstempel der Wechsel
+        const RESET_TIMEOUT_MS = 2000; // Schnellerer Reset bei Inaktivität
+        const MIN_WAVE_DURATION_MS = 1500; // Winken muss mindestens 1.5s dauern
+        const REQUIRED_SWITCHES = 6; // Erhöht auf 6 Wechsel (3x hin und her)
 
         function onResults(results) {
             canvasCtx.save();
@@ -55,7 +58,6 @@
             locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
         });
 
-        // OPTIMIERUNG: modelComplexity auf 2 (Heavy) für maximale Genauigkeit
         pose.setOptions({
             modelComplexity: 2, 
             smoothLandmarks: true,
@@ -76,7 +78,7 @@
         });
 
         camera.start().then(() => {
-            statusElement.innerText = "Aktiv: Wink zum Loggen";
+            statusElement.innerText = "Aktiv: Deutlich winken zum Loggen";
         });
 
         function calculateAngle(p1, p2, p3) {
@@ -87,7 +89,6 @@
         }
 
         function isInFrame(lm) {
-            // MediaPipe Koordinaten sind auf [0, 1] normalisiert
             return lm && lm.x >= 0.0 && lm.x <= 1.0 && lm.y >= 0.0 && lm.y <= 1.0;
         }
 
@@ -104,7 +105,6 @@
             
             if (!nose || (!leftWrist && !rightWrist)) return;
 
-            // Bestimme aktiven Arm
             let isLeft = (leftWrist && (!rightWrist || leftWrist.y < rightWrist.y));
             let wrist = isLeft ? leftWrist : rightWrist;
             let elbow = isLeft ? leftElbow : rightElbow;
@@ -113,44 +113,51 @@
 
             const now = Date.now();
 
-            // STRENGE PRÜFUNG: 
-            // 1. Alle benötigten Punkte müssen vorhanden sein
-            // 2. Sichtbarkeit muss hoch sein (> 0.75)
-            // 3. Beide Schultern und der aktive Ellbogen MÜSSEN im Bildbereich liegen
+            // Strenge Sichtbarkeitsprüfung
             const pointsValid = 
                 leftShoulder && rightShoulder && elbow && wrist && hip &&
-                leftShoulder.visibility > 0.75 && isInFrame(leftShoulder) &&
-                rightShoulder.visibility > 0.75 && isInFrame(rightShoulder) &&
-                elbow.visibility > 0.75 && isInFrame(elbow) &&
-                wrist.visibility > 0.75 && 
-                hip.visibility > 0.75 && isInFrame(hip);
+                leftShoulder.visibility > 0.8 && isInFrame(leftShoulder) &&
+                rightShoulder.visibility > 0.8 && isInFrame(rightShoulder) &&
+                elbow.visibility > 0.8 && isInFrame(elbow) &&
+                wrist.visibility > 0.8 && 
+                hip.visibility > 0.8 && isInFrame(hip);
 
             if (!pointsValid) {
                 if (now - lastSwitchTime > RESET_TIMEOUT_MS) resetWave();
                 return;
             }
             
-            // Hand über Kopf?
             if (wrist.y < nose.y) {
                 const angle = calculateAngle(hip, shoulder, elbow);
 
-                // ZONE LOGIC
-                if (angle < 105 && currentState !== "LEFT") {
-                    currentState = "LEFT";
-                    zoneSwitches++;
-                    lastSwitchTime = now;
-                } else if (angle > 135 && currentState !== "RIGHT") {
-                    currentState = "RIGHT";
-                    zoneSwitches++;
-                    lastSwitchTime = now;
+                // Zone Logic mit Hysterese
+                let newZone = currentState;
+                if (angle < 100) newZone = "LEFT";
+                else if (angle > 140) newZone = "RIGHT";
+
+                if (newZone !== currentState && newZone !== "CENTER") {
+                    // Zeitlicher Filter zwischen Wechseln (min 200ms, max 1000ms pro Schwung)
+                    const timeSinceLast = now - lastSwitchTime;
+                    if (timeSinceLast > 200 && timeSinceLast < 1000) {
+                        zoneSwitches++;
+                        switchHistory.push(now);
+                        currentState = newZone;
+                        lastSwitchTime = now;
+                        statusElement.innerText = `Winken erkannt: ${Math.floor(zoneSwitches/2)}x`;
+                    } else if (timeSinceLast >= 1000) {
+                        // Zu langsam -> Neustart
+                        resetWave();
+                    }
                 }
 
                 if (now - lastSwitchTime > RESET_TIMEOUT_MS) {
                     resetWave();
                 }
 
-                if (zoneSwitches >= 4) { 
-                    if (now - lastWaveTime > 60000) {
+                // Auslösen: 6 Wechsel (~3x hin und her) UND Dauer > 1.5s
+                if (zoneSwitches >= REQUIRED_SWITCHES) {
+                    const totalDuration = now - switchHistory[0];
+                    if (totalDuration >= MIN_WAVE_DURATION_MS && (now - lastWaveTime > 60000)) {
                         lastWaveTime = now;
                         triggerLog();
                     }
@@ -164,6 +171,8 @@
         function resetWave() {
             currentState = "CENTER";
             zoneSwitches = 0;
+            switchHistory = [];
+            statusElement.innerText = "Aktiv: Deutlich winken zum Loggen";
         }
 
         async function triggerLog() {
@@ -192,7 +201,7 @@
                 statusElement.innerText = "Netzwerkfehler";
             }
             
-            setTimeout(() => statusElement.innerText = "Aktiv: Wink zum Loggen", 5000);
+            setTimeout(() => resetWave(), 5000);
         }
     </script>
 </body>
